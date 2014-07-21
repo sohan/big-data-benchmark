@@ -153,17 +153,20 @@ QUERY_MAP = {
              '4':  (QUERY_4_HQL, None, None),
              '4_HIVE':  (QUERY_4_HQL_HIVE_UDF, None, None)}
 
-# Turn a given query into a version using cached tables
+# Turn a given query into a version using cached tables. Only the tables
+# that we create need to be named as X_cached; we cache the existing tables
+# using Shark's explicit "CACHE" query.
 def make_input_cached(query):
-  return query.replace("uservisits", "uservisits_cached") \
-              .replace("rankings", "rankings_cached") \
-              .replace("url_counts_partial", "url_counts_partial_cached") \
-              .replace("url_counts_total", "url_counts_total_cached") \
-              .replace("documents", "documents_cached")
+  return query.replace("url_counts_partial", "url_counts_partial_cached") \
+              .replace("url_counts_total", "url_counts_total_cached")
 
-# Turn a given query into one that creats cached tables
+# Turn a given query into one that creates cached tables
 def make_output_cached(query):
-  return query.replace(TMP_TABLE, TMP_TABLE_CACHED)
+  name_replaced =  query.replace(TMP_TABLE, TMP_TABLE_CACHED)
+  # We need to explicitly add the memory_only property so that Shark doesn't save the table to HDFS.
+  added_table_properties = name_replaced.replace("CREATE TABLE %s" % TMP_TABLE_CACHED,
+    'CREATE TABLE %s TBLPROPERTIES("shark.cache"="memory_only")' % TMP_TABLE_CACHED)
+  return added_table_properties;
 
 ### Runner ###
 def parse_args():
@@ -186,7 +189,7 @@ def parse_args():
       default=False, help="Disable caching in Shark")
   parser.add_option("--impala-use-hive", action="store_true",
       default=False, help="Use Hive for query executio on Impala nodes") 
-  parser.add_option("-t", "--reduce-tasks", type="int", default=150, 
+  parser.add_option("-t", "--reduce-tasks", type="int", default=160, 
       help="Number of reduce tasks in Shark")
   parser.add_option("-z", "--clear-buffer-cache", action="store_true",
       default=False, help="Clear disk buffer cache between query runs")
@@ -306,11 +309,11 @@ def run_shark_benchmark(opts):
   slaves = map(str.strip, open(local_slaves_file).readlines())
 
   print "Restarting standalone scheduler..."
-  ssh_shark("/root/spark/bin/stop-all.sh")
+  ssh_shark("/root/spark/sbin/stop-all.sh")
   ensure_spark_stopped_on_slaves(slaves)
   time.sleep(30)
-  ssh_shark("/root/spark/bin/stop-all.sh")
-  ssh_shark("/root/spark/bin/start-all.sh")
+  ssh_shark("/root/spark/sbin/stop-all.sh")
+  ssh_shark("/root/spark/sbin/start-all.sh")
   time.sleep(10)
 
   # Two modes here: Shark Mem and Shark Disk. If using Shark disk clear buffer
@@ -334,15 +337,12 @@ def run_shark_benchmark(opts):
     if '4' in opts.query_num:
       # Query 4 uses entirely different tables
       query_list += """
-                    DROP TABLE IF EXISTS documents_cached;
-                    CREATE TABLE documents_cached AS SELECT * FROM documents;
+                    CACHE documents;
                     """
     else:
       query_list += """
-                    DROP TABLE IF EXISTS uservisits_cached;
-                    DROP TABLE IF EXISTS rankings_cached;
-                    CREATE TABLE uservisits_cached AS SELECT * FROM uservisits;
-                    CREATE TABLE rankings_cached AS SELECT * FROM rankings;
+                    CACHE uservisits;
+                    CACHE rankings;
                     """
 
   # Warm up for Query 1
@@ -363,7 +363,7 @@ def run_shark_benchmark(opts):
     query_file.write("python /root/shark/bin/dev/clear-buffer-cache.py\n")
 
   query_file.write(
-    "%s -e '%s' > %s 2>&1\n" % (runner, query_list, remote_tmp_file))
+    "%s -skipRddReload -e '%s' > %s 2>&1\n" % (runner, query_list, remote_tmp_file))
 
   query_file.write(
       "cat %s | grep Time | grep -v INFO |grep -v MapReduce >> %s\n" % (
@@ -387,6 +387,7 @@ def run_shark_benchmark(opts):
     print "Stopping Executors on Slaves....."
     ensure_spark_stopped_on_slaves(slaves)
     print "Query %s : Trial %i" % (opts.query_num, i+1)
+    print "Log output on master in ", remote_tmp_file
     ssh_shark("%s" % remote_query_file)
     local_results_file = os.path.join(LOCAL_TMP_DIR, "%s_results" % prefix)
     scp_from(opts.shark_host, opts.shark_identity_file, "root",
@@ -755,7 +756,7 @@ def ensure_spark_stopped_on_slaves(slaves):
   while not stop:
     cmd = "jps | grep ExecutorBackend"
     ret_vals = map(lambda s: ssh_ret_code(s, "root", opts.shark_identity_file, cmd), slaves)
-    print ret_vals
+    print "ExecutorBackend stopped on slaves?", ret_vals
     if 0 in ret_vals:
       print "Spark is still running on some slaves... sleeping"
       cmd = "jps | grep ExecutorBackend | cut -d \" \" -f 1 | xargs -rn1 kill -9"
@@ -807,7 +808,11 @@ def main():
     return ",".join([str(k) for k in lst]) 
 
   output = StringIO()
-  outfile = open('results/%s_%s_%s' % (fname, opts.query_num, datetime.datetime.now()), 'w')
+  out_filename = 'results/%s_%s/%s' % (fname, opts.query_num, datetime.datetime.now())
+  dir_name = os.path.dirname(out_filename)
+  if not os.path.exists(dir_name):
+    os.makedirs(dir_name)
+  outfile = open(out_filename, 'w')
 
   try:
     if not opts.redshift:
