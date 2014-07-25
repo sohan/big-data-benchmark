@@ -15,19 +15,4 @@
 # limitations under the License.
 
 cd "`dirname $0`"
-
-OPTIND=1
-
-while [[ $# > 1 ]]; do
-  key="$1"
-  shift
-
-  case $key in
-      --vertica)
-      PYTHONPATH="./vertica/:$PYTHONPATH" python ./vertica/prepare_benchmark.py $0
-      shift
-      ;;
-      *)
-      PYTHONPATH="./deps/:$PYTHONPATH" python ./prepare_benchmark.py $@
-      ;;
-esac
+PYTHONPATH="./vertica:./deps/:$PYTHONPATH" python ./prepare_benchmark.py $@

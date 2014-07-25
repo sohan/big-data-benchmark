@@ -109,7 +109,7 @@ QUERY_3a_SQL = """SELECT sourceIP, totalRevenue, avgPageRank
                       WHERE R.pageURL = UV.destinationURL
                       AND UV.visitDate 
                         BETWEEN Date('1980-01-01') AND Date('1980-04-01')
-                      GROUP BY UV.sourceIP)
+                      GROUP BY UV.sourceIP) as tmpTable
                    ORDER BY totalRevenue DESC LIMIT 1""".replace("\n", "")
 QUERY_3a_SQL = " ".join(QUERY_3a_SQL.replace("\n", "").split())
 QUERY_3b_SQL = QUERY_3a_SQL.replace("1980-04-01", "1983-01-01")
@@ -184,6 +184,8 @@ def parse_args():
       help="Use in conjunction with --hive")
   parser.add_option("--hive-cdh", action="store_true", default=False,
       help="Hive on CDH cluster")
+  parser.add_option("--vertica", action="store_true", default=False,
+      help="Whether to include Vertica")
 
   parser.add_option("-g", "--shark-no-cache", action="store_true", 
       default=False, help="Disable caching in Shark")
@@ -204,6 +206,8 @@ def parse_args():
       help="Hostname of Hive master node")
   parser.add_option("--hive-slaves",
       help="Hostnames of Hive slaves (comma seperated)")
+  parser.add_option("--vertica-host",
+      help="Hostname of Vertica ODBC endpoint")
 
   parser.add_option("-x", "--impala-identity-file",
       help="SSH private key file to use for logging into Impala node")
@@ -211,12 +215,30 @@ def parse_args():
       help="SSH private key file to use for logging into Shark node")
   parser.add_option("--hive-identity-file",
       help="SSH private key file to use for logging into Hive node")
+  parser.add_option("--vertica-identity-file",
+      help="SSH private key file to use for logging into Vertica node")
+
   parser.add_option("-u", "--redshift-username",
       help="Username for Redshift ODBC connection")
   parser.add_option("-p", "--redshift-password",
       help="Password for Redshift ODBC connection")
   parser.add_option("-e", "--redshift-database",
       help="Database to use in Redshift")
+
+  parser.add_option("--vertica-username",
+      help="Username for Vertica ODBC connection")
+  parser.add_option("--vertica-port",
+      help="Port for Vertica ODBC connection")
+  parser.add_option("--vertica-password",
+      help="Password for Vertica ODBC connection")
+  parser.add_option("--vertica-database",
+      help="Database to use in Vertica")
+
+  parser.add_option("-d", "--aws-key-id",
+      help="Access key ID for AWS")
+  parser.add_option("-k", "--aws-key",
+      help="Access key for AWS")
+
   parser.add_option("--num-trials", type="int", default=10,
       help="Number of trials to run for this query")
   parser.add_option("--prefix", type="string", default="",
@@ -228,7 +250,7 @@ def parse_args():
 
   (opts, args) = parser.parse_args()
 
-  if not (opts.impala or opts.shark or opts.redshift or opts.hive or opts.hive_cdh):
+  if not (opts.impala or opts.shark or opts.redshift or opts.hive or opts.hive_cdh or opts.vertica):
     parser.print_help()
     sys.exit(1)
 
@@ -258,6 +280,16 @@ def parse_args():
   if opts.hive or opts.hive_cdh:
     opts.hive_slaves = opts.hive_slaves.split(",")
     print >> stderr, "Hive slaves:\n%s" % "\n".join(opts.hive_slaves)
+
+  if opts.vertica and (opts.vertica_username is None or
+                        opts.vertica_password is None or
+                        opts.vertica_host is None or
+                        opts.vertica_database is None or
+                        opts.aws_key_id is None or
+                        opts.aws_key is None):
+    print >> stderr, \
+        "Vertica requires host, username, password, db, and AWS credentials"
+    sys.exit(1)
 
   if opts.query_num not in QUERY_MAP:
     print >> stderr, "Unknown query number: %s" % opts.query_num
@@ -779,6 +811,9 @@ def main():
     results, contents = run_hive_benchmark(opts)
   if opts.hive_cdh:
     results, contents = run_hive_cdh_benchmark(opts)
+  if opts.vertica:
+    import vertica.run
+    results, contents = vertica.run.run_vertica_benchmark(opts)
 
   if opts.impala:
     if opts.clear_buffer_cache:
@@ -801,6 +836,8 @@ def main():
       fname = "cdh_hive_clear_cache"
     else:
       fname = "cdh_hive"
+  elif opts.vertica:
+      fname = 'vertica'
 
   fname = opts.prefix + fname
 
@@ -821,8 +858,6 @@ def main():
     print >> output, "Results: %s" % prettylist(results)
     print >> output, "Percentiles: %s" % get_percentiles(results)
     print >> output, "Best: %s"  % min(results)
-    if not opts.redshift:
-      print >> output, "Contents: \n%s" % str(prettylist(contents))
     print output.getvalue()
     print >> outfile, output.getvalue()
   except:

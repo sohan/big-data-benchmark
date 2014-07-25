@@ -1,64 +1,9 @@
-from optparse import OptionParser
-import sys
-
 import paramiko
 from boto.s3.connection import S3Connection
 import workerpool
-import ipdb
+import prepare_benchmark
 
-SCALE_FACTOR_MAP = {
-  0: "tiny",
-  1: "1node",
-  5: "5nodes",
-  10: "10nodes"
-}
-
-def parse_args():
-  parser = OptionParser(usage="prepare_benchmark.py [options]")
-
-  parser.add_option("--vertica-host",
-      help="Hostname of Vertica ODBC endpoint")
-
-  parser.add_option("--vertica-identity-file",
-      help="SSH private key file to use for logging into Vertica node")
-
-  parser.add_option("--vertica-username",
-      help="Username for Vertica ODBC connection")
-  parser.add_option("--vertica-port",
-      help="Port for Vertica ODBC connection")
-  parser.add_option("--vertica-password",
-      help="Password for Vertica ODBC connection")
-  parser.add_option("--vertica-database",
-      help="Database to use in Vertica")
-
-  parser.add_option("-n", "--scale-factor", type="int", default=5,
-      help="Number of database nodes (dataset is scaled accordingly)")
-
-  parser.add_option("-d", "--aws-key-id",
-      help="Access key ID for AWS")
-  parser.add_option("-k", "--aws-key",
-      help="Access key for AWS")
-
-  (opts, args) = parser.parse_args()
-
-  if opts.scale_factor not in SCALE_FACTOR_MAP.keys():
-    print >> sys.stderr, "Unsupported cluster size: %s" % opts.scale_factor
-    sys.exit(1)
-
-  opts.data_prefix = SCALE_FACTOR_MAP[opts.scale_factor]
-  opts.file_format = 'text'
-
-  if (opts.vertica_username is None or
-      opts.vertica_password is None or
-      opts.vertica_host is None or
-      opts.vertica_database is None or
-      opts.aws_key_id is None or
-      opts.aws_key is None):
-    print >> sys.stderr, \
-        "Vertica requires host, username, password, db, and AWS credentials"
-    sys.exit(1)
-
-  return opts
+SCALE_FACTOR_MAP = prepare_benchmark.SCALE_FACTOR_MAP
 
 def get_ssh_client(opts):
   ssh = paramiko.SSHClient()
@@ -146,7 +91,7 @@ def prepare_vertica_dataset(opts):
   _vsql('''
     CREATE TABLE uservisits (
       sourceIP VARCHAR(116),
-      destURL VARCHAR(100),
+      destinationURL VARCHAR(100),
       visitDate DATE,
       adRevenue FLOAT,
       userAgent VARCHAR(256),
@@ -169,7 +114,7 @@ def prepare_vertica_dataset(opts):
   print "=== FINISHED CREATING BENCHMARK DATA ==="
 
 def main():
-  opts = parse_args()
+  opts = prepare_benchmark.parse_args()
   prepare_vertica_dataset(opts)
 
 if __name__ == "__main__":

@@ -63,12 +63,12 @@ def parse_args():
       help="Hostname of Shark master node")
   parser.add_option("-c", "--redshift-host",
       help="Hostname of Redshift ODBC endpoint")
-  parser.add_option("--vertica-host",
-      help="Hostname of Vertica ODBC endpoint")
   parser.add_option("--hive-host",
       help="Hostname of Hive master node")
   parser.add_option("--hive-slaves",
       help="Comma separated list of Hive slaves")
+  parser.add_option("--vertica-host",
+      help="Hostname of Vertica ODBC endpoint")
 
   parser.add_option("-x", "--impala-identity-file",
       help="SSH private key file to use for logging into Impala node")
@@ -145,6 +145,9 @@ def parse_args():
     print >> stderr, \
         "Redshift requires host, username, password, db, and AWS credentials"
     sys.exit(1)
+
+  if opts.vertica:
+    opts.file_format = 'text'
 
   if opts.vertica and (opts.vertica_username is None or
                         opts.vertica_password is None or
@@ -649,7 +652,8 @@ def main():
   if opts.hive_cdh:
     prepare_hive_cdh_dataset(opts)
   if opts.vertica:
-    prepare_vertica_dataset(opts)
+    import vertica.prepare
+    vertica.prepare.prepare_vertica_dataset(opts)
 
 if __name__ == "__main__":
   main()
