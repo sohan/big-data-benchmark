@@ -1,7 +1,6 @@
+import re
 from .prepare import get_ssh_client, vsql
 import run_query
-import re
-
 
 VERTICA_QUERY_MAP = {
   '1a': run_query.QUERY_1a_SQL,
@@ -22,7 +21,6 @@ def _get_time_from_result_str(result_str):
 
 def run_vertica_benchmark(opts):
   ssh_client = get_ssh_client(opts) 
-
   _vsql = lambda sql: vsql(ssh_client, opts, sql)
 
   sql = VERTICA_QUERY_MAP[opts.query_num]
@@ -30,10 +28,19 @@ def run_vertica_benchmark(opts):
   results = []
   for i in xrange(opts.num_trials):
     print "Query %s : Trial %i" % (opts.query_num, i+1)
-    stdout, stderr = _vsql(r"\timing\\\\" + sql)
-    #TODO: write results to file as part of test
-    # use the \o or -o flag:
-    # https://my.vertica.com/docs/4.1/HTML/Master/15255.htm
+    tmp_table_name = 'TMP_TABLE_{0}'.format(opts.query_num)
+
+    _vsql('DROP TABLE IF EXISTS {0}'.format(tmp_table_name))
+    # Load the results of the query into a table, to simulate
+    # persisting the results to disk, as in the other benchmarks
+    persist_results_sql = '''
+      SELECT * INTO TABLE {tmp_table_name} FROM (
+          {original_sql}
+      ) as original_results_tmp
+    '''.format(tmp_table_name=tmp_table_name,
+               original_sql=sql)
+    stdout, stderr = _vsql(r"\timing\\\\{sql}".format(sql=persist_results_sql))
+
     timing_str = stdout[-1].strip()
     t_ms = _get_time_from_result_str(timing_str)
     results.append(t_ms/1000.0)

@@ -23,15 +23,12 @@ def ssh_vertica(ssh_client, command):
         break
   return stdout, stderr
 
-def vsql(ssh_client, opts, sql):
+def vsql(ssh_client, opts, sql, out_file=None):
   '''
   Execute some SQL using vsql on the server.
   Be sure to escape any " (double quotes) you use.
   '''
   cleaned_sql = sql.replace('\n', ' ')
-  # return ssh_vertica(ssh_client, '''
-  #   /opt/vertica/bin/vsql -U {vertica_username} -w {vertica_password} -h {vertica_host} -d {vertica_database} -p {vertica_port} -c "{sql}"
-  # '''.format(sql=cleaned_sql, **opts.__dict__))
 
   return ssh_vertica(ssh_client, '''
     echo "{sql}" | /opt/vertica/bin/vsql -U {vertica_username} -w {vertica_password} -h {vertica_host} -d {vertica_database} -p {vertica_port}
@@ -42,15 +39,6 @@ def prepare_vertica_dataset(opts):
 
   _ssh_vertica = lambda c: ssh_vertica(ssh_client, c)
   _vsql = lambda sql: vsql(ssh_client, opts, sql)
-
-  def s3_to_table(s3_url, table):
-    # use s3cmd get to import into vertica
-
-    # _ssh_vertica('''
-    #   s3cmd get {s3_key} - | /opt/vertica/bin/vsql -U {vertica_username} -w {vertica_password} -h {vertica_host} -d {vertica_database} -p {vertica_port} -c "copy {table} from STDIN DELIMITER ','"
-    # '''.format(s3_key=s3_key, table=table, **opts.__dict__))
-
-    _ssh_vertica("COPY {0} WITH SOURCE curl(url='{1}') DELIMITER ','".format(s3_url, table))
 
   def parallel_s3_to_table(bucket, s3_key, table, parallelism=10):
     def copy_to_vertica(url):
@@ -101,21 +89,27 @@ def prepare_vertica_dataset(opts):
       duration INT 
     )
   ''')
+  # if opts.vertica_use_projections:
+  #   _vsql('''
+  #     CREATE PROJECTION uservists_p1 (
+  #       sourceIP, destinationURL, visitDate, adRevenue
+  #     )
+  #   ''')
+  #   pass
   parallel_s3_to_table(bucket, s3_key.format(table_name='uservisits'), 'uservisits')
 
-  _vsql('DROP TABLE IF EXISTS documents')
-  _vsql('''
-    CREATE TABLE documents (
-      line VARCHAR(300)
-    )
-  ''')
-  parallel_s3_to_table(bucket, s3_key.format(table_name='crawl'), 'documents')
+  # _vsql('DROP TABLE IF EXISTS documents')
+  # _vsql('''
+  #   CREATE TABLE documents (
+  #     line VARCHAR(300)
+  #   )
+  # ''')
+  # parallel_s3_to_table(bucket, s3_key.format(table_name='crawl'), 'documents')
 
   print "=== FINISHED CREATING BENCHMARK DATA ==="
 
 def main():
-  opts = prepare_benchmark.parse_args()
-  prepare_vertica_dataset(opts)
+  prepare_benchmark.main()
 
 if __name__ == "__main__":
   main()
