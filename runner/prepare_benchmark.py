@@ -94,6 +94,10 @@ def parse_args():
       help="Password for Vertica ODBC connection")
   parser.add_option("--vertica-database",
       help="Database to use in Vertica")
+  parser.add_option("--vertica-use-projections",
+      help="Whether to create projections in Vertica",
+      action="store_true",
+      default=False)
 
   parser.add_option("-n", "--scale-factor", type="int", default=5,
       help="Number of database nodes (dataset is scaled accordingly)")
