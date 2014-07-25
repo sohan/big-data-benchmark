@@ -14,12 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-SHARK_HOST=ec2-184-73-94-24.compute-1.amazonaws.com
-SHARK_IDENTITY_FILE=~/.ssh/patkey.pem
-NUM_TRIALS=2
-RUN_DIR=..
-queries=(1a)
-out_file=shark_`date +%s`
+SHARK_HOST="ec2-54-86-136-29.compute-1.amazonaws.com"
+SHARK_IDENTITY_FILE="~/.ssh/loc-sandbox-sjain.pem"
+NUM_TRIALS=3
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+RUN_DIR=${DIR}/..
+queries=(1a 1b 1c 2a 2b 2c 3a 3b 3c 4)
+out_file="log/shark_`date +%s`"
 
 for i in "${queries[@]}"
 do
@@ -29,7 +30,6 @@ do
     --reduce-tasks=500 \
     --num-trials=$NUM_TRIALS \
     --shark-host=$SHARK_HOST \
+    --shark-no-cache \
     --shark-identity-file=$SHARK_IDENTITY_FILE >> $out_file
 done
-
-

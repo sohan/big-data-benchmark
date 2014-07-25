@@ -54,6 +54,8 @@ def parse_args():
       help="Whether to include Hive")
   parser.add_option("--hive-cdh", action="store_true", default=False,
       help="Hive on CDH cluster")
+  parser.add_option("--vertica", action="store_true", default=False,
+      help="Whether to include Vertica")
 
   parser.add_option("-a", "--impala-host",
       help="Hostname of Impala state store node")
@@ -61,6 +63,8 @@ def parse_args():
       help="Hostname of Shark master node")
   parser.add_option("-c", "--redshift-host",
       help="Hostname of Redshift ODBC endpoint")
+  parser.add_option("--vertica-host",
+      help="Hostname of Vertica ODBC endpoint")
   parser.add_option("--hive-host",
       help="Hostname of Hive master node")
   parser.add_option("--hive-slaves",
@@ -72,12 +76,24 @@ def parse_args():
       help="SSH private key file to use for logging into Shark node")
   parser.add_option("--hive-identity-file",
       help="SSH private key file to use for logging into Hive node")
+  parser.add_option("--vertica-identity-file",
+      help="SSH private key file to use for logging into Vertica node")
+
   parser.add_option("-u", "--redshift-username",
       help="Username for Redshift ODBC connection")
   parser.add_option("-p", "--redshift-password",
       help="Password for Redshift ODBC connection")
   parser.add_option("-e", "--redshift-database",
       help="Database to use in Redshift")
+
+  parser.add_option("--vertica-username",
+      help="Username for Vertica ODBC connection")
+  parser.add_option("--vertica-port",
+      help="Port for Vertica ODBC connection")
+  parser.add_option("--vertica-password",
+      help="Password for Vertica ODBC connection")
+  parser.add_option("--vertica-database",
+      help="Database to use in Vertica")
 
   parser.add_option("-n", "--scale-factor", type="int", default=5,
       help="Number of database nodes (dataset is scaled accordingly)")
@@ -95,7 +111,7 @@ def parse_args():
 
   (opts, args) = parser.parse_args()
 
-  if not (opts.impala or opts.shark or opts.redshift or opts.hive or opts.hive_tez or opts.hive_cdh):
+  if not (opts.impala or opts.shark or opts.redshift or opts.hive or opts.hive_tez or opts.hive_cdh or opts.vertica):
     parser.print_help()
     sys.exit(1)
 
@@ -129,6 +145,17 @@ def parse_args():
     print >> stderr, \
         "Redshift requires host, username, password, db, and AWS credentials"
     sys.exit(1)
+
+  if opts.vertica and (opts.vertica_username is None or
+                        opts.vertica_password is None or
+                        opts.vertica_host is None or
+                        opts.vertica_database is None or
+                        opts.aws_key_id is None or
+                        opts.aws_key is None):
+    print >> stderr, \
+        "Vertica requires host, username, password, db, and AWS credentials"
+    sys.exit(1)
+
   
   return opts
 
@@ -241,15 +268,21 @@ def prepare_shark_dataset(opts):
       "/root/url_count.py")
   ssh_shark("/root/spark-ec2/copy-dir /root/url_count.py")
 
+  #ssh_shark("""
+  #          mv shark shark-back;
+  #          git clone https://github.com/ahirreddy/shark.git -b branch-0.8;
+  #          cp shark-back/conf/shark-env.sh shark/conf/shark-env.sh;
+  #          cd shark;
+  #          sbt/sbt assembly;
+  #          /root/spark-ec2/copy-dir --delete /root/shark;
+  #          """)
   ssh_shark("""
-            mv shark shark-back;
-            git clone https://github.com/ahirreddy/shark.git -b branch-0.8;
-            cp shark-back/conf/shark-env.sh shark/conf/shark-env.sh;
             cd shark;
-            sbt/sbt assembly;
+            SHARK_HADOOP_VERSION=2.0.0-mr1-cdh4.5.0 sbt/sbt clean;
+            SHARK_HADOOP_VERSION=2.0.0-mr1-cdh4.5.0 sbt/sbt assembly;
             /root/spark-ec2/copy-dir --delete /root/shark;
             """)
-
+            
   ssh_shark(
     "/root/shark/bin/shark -e \"DROP TABLE IF EXISTS rankings; " \
     "CREATE EXTERNAL TABLE rankings (pageURL STRING, pageRank INT, " \
@@ -615,6 +648,8 @@ def main():
     prepare_tez(opts)
   if opts.hive_cdh:
     prepare_hive_cdh_dataset(opts)
+  if opts.vertica:
+    prepare_vertica_dataset(opts)
 
 if __name__ == "__main__":
   main()
