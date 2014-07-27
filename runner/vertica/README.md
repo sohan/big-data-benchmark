@@ -12,16 +12,22 @@ There's a `fabric` command `install_curl_udl` in the `aws-vertica` repo above th
 On each vertica node, install curl and gcc as follows:
 
 `yum install -y gcc-c++`
+
 `yum install -y curl`
+
 `yum install -y libcurl-devel`
 
 Then, create a library and UDL for curl:
+
 `cd /opt/vertica/sdk/examples && make`
+
 `vsql> CREATE LIBRARY curllib as '/opt/vertica/sdk/examples/build/cURLLib.so'
+
 `CREATE SOURCE curl AS LANGUAGE 'C++' NAME 'CurlSourceFactory' LIBRARY curllib`
 
 #### Python dependencies
 Install python dependencies using pip and optionally virtualenv (recommended):
+
 `pip install vertica/requirements.txt`
 
 #### Load data
